@@ -99,53 +99,56 @@ app.get('/strings', (req, res) => {
 });
 
 app.get('/strings/filter-by-natural-language', (req, res) => {
-  const { query } = req.query;
+  const query = req.query.query;
+  if (!query) {
+    return res.status(400).json({ error: 'Missing query parameter' });
+  }
+  const filters = {};
 
-  if (!query || typeof query !== 'string') {
-    return res.status(400).json({ error: 'Missing or invalid "query" parameter' });
+  if (/single word/i.test(query)) filters.word_count = 1;
+  if (/palindromic/i.test(query)) filters.is_palindrome = true;
+
+  const longerThanMatch = query.match(/longer than (\d+)/i);
+  if (longerThanMatch) {
+    filters.min_length = parseInt(longerThanMatch[1], 10) + 1;
   }
 
-  const lower = query.toLowerCase();
-
-  const parsedFilters = {};
-
-  if (lower.includes('single word')) parsedFilters.word_count = 1;
-  if (lower.includes('palindromic')) parsedFilters.is_palindrome = true;
-
-  const minLengthMatch = lower.match(/longer than (\d+)/);
-  if (minLengthMatch) {
-    parsedFilters.min_length = parseInt(minLengthMatch[1], 10) + 1;
+  const containsLetterMatch = query.match(/containing the letter (\w)/i);
+  if (containsLetterMatch) {
+    filters.contains_character = containsLetterMatch[1];
   }
 
-  const containsCharMatch = lower.match(/containing the letter (\w)/);
-  if (containsCharMatch) {
-    parsedFilters.contains_character = containsCharMatch[1];
+  if (/contain the first vowel/i.test(query)) {
+    filters.contains_character = 'a'; 
   }
 
+  // Apply filters to store
   let results = [...store.values()];
 
-  if ('word_count' in parsedFilters) {
-    results = results.filter(r => r.properties.word_count === parsedFilters.word_count);
+  if (filters.word_count !== undefined) {
+    results = results.filter(r => r.properties.word_count === filters.word_count);
   }
-  if ('is_palindrome' in parsedFilters) {
-    results = results.filter(r => r.properties.is_palindrome === parsedFilters.is_palindrome);
+  if (filters.is_palindrome !== undefined) {
+    results = results.filter(r => r.properties.is_palindrome === filters.is_palindrome);
   }
-  if ('min_length' in parsedFilters) {
-    results = results.filter(r => r.properties.length >= parsedFilters.min_length);
+  if (filters.min_length !== undefined) {
+    results = results.filter(r => r.properties.length >= filters.min_length);
   }
-  if ('contains_character' in parsedFilters) {
-    results = results.filter(r => r.value.includes(parsedFilters.contains_character));
+  if (filters.contains_character !== undefined) {
+    results = results.filter(r => r.value.includes(filters.contains_character));
   }
 
-  return res.status(200).json({
+
+  return res.json({
     data: results,
     count: results.length,
     interpreted_query: {
       original: query,
-      parsed_filters: parsedFilters
+      parsed_filters: filters
     }
   });
 });
+
 
 app.delete('/strings/:value', (req, res) => {
   const target = req.params.value;
